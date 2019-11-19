@@ -1,0 +1,65 @@
+- name: "Check to be whether installed dart version {{ DART_VERSION }}"
+  stat:
+    path: "{{ SDK['PARENT_DIR'] }}/{{ DART_VERSION }}"
+  register: is_dart
+- name: Install Dart SDK
+  block:
+    - name: Download a dart-sdk zip file
+      get_url:
+        url: "{{ SDK['URL'] }}"
+        dest: "{{ TEMP_DIR }}/{{ SDK['ZIP'] }}"
+        checksum: "sha256:{{ SDK['URL'] }}.sha256sum"
+      ignore_errors: "{{ ansible_check_mode }}"
+    - name: Unzip a dart-sdk zip file
+      unarchive:
+        src: "{{ TEMP_DIR }}/{{ SDK['ZIP'] }}"
+        dest: "{{ SDK['PARENT_DIR'] }}"
+        creates: "{{ SDK['PARENT_DIR'] }}"
+        remote_src: yes
+      ignore_errors: "{{ ansible_check_mode }}"
+    - name: Change owner and group to root
+      file:
+        path: "{{ SDK['PARENT_DIR'] }}/dart-sdk"
+        owner: root
+        group: root
+        state: directory
+        mode: "0755"
+        recurse: yes
+    - name: Rename directory to sdk version
+      command:
+        cmd: "mv {{ SDK['PARENT_DIR'] }}/dart-sdk {{ SDK['PARENT_DIR'] }}/{{ DART_VERSION }}"
+    - name: Create/Change symbolic link to sdk current version
+      file:
+        src: "{{ SDK['PARENT_DIR'] }}/{{ DART_VERSION }}"
+        dest: "{{ SDK['PARENT_DIR'] }}/current"
+        owner: root
+        group: root
+        state: link
+    - name: Find files of dart binary
+      find:
+        paths: "{{ SDK['PARENT_DIR'] }}/current/bin"
+        file_type: file
+        recurse: no
+      register: dart_files
+    - name: Create symbolic link to dart bin
+      file:
+        src: "{{ item['path'] }}"
+        dest: "/usr/local/bin/{{ item['path'] | basename }}"
+        owner: root
+        group: root
+        state: link
+      loop: "{{ dart_files.files }}"
+  become: yes
+  when: is_dart.stat.exists == false
+
+- name: Setting pub
+  block:
+    - name: Export PATH of pub if need
+      lineinfile:
+        path: "{{ ansible_env.HOME }}/.bash_profile"
+        state: present
+        line: "export PATH=$PATH:$HOME/.pub-cache/bin"
+      notify: Reload profile
+    - name: Activate webdev package
+      command:
+        cmd: "pub global activate webdev"
