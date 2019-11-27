@@ -1,3 +1,0 @@
-- name: Reload profile
-  command:
-    cmd: "source {{ ansible_env.HOME }}/.bash_profile"

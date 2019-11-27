@@ -2,5 +2,4 @@ DART_VERSION: 2.5.2
 SDK:
   URL: "https://storage.googleapis.com/dart-archive/channels/stable/release/{{ DART_VERSION }}/sdk/dartsdk-linux-x64-release.zip"
   ZIP: dartsdk-linux-x64-release.zip
-  PARENT_DIR: /usr/local/dart-sdk
-TEMP_DIR: /tmp/dart-sdk-tmp
+  ROOT_DIR: /usr/local/dart-sdk

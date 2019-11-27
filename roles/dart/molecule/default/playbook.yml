@@ -1,5 +1,7 @@
 ---
 - name: Converge
   hosts: all
+  vars:
+    ansible_python_interpreter: auto_legacy
   roles:
     - role: dart

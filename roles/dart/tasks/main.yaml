@@ -1,43 +1,67 @@
 - name: "Check to be whether installed dart version {{ DART_VERSION }}"
   stat:
-    path: "{{ SDK['PARENT_DIR'] }}/{{ DART_VERSION }}"
+    path: "{{ SDK['ROOT_DIR'] }}/{{ DART_VERSION }}"
   register: is_dart
+
 - name: Install Dart SDK
   block:
+    - name: Create temporary download directory
+      tempfile:
+        state: directory
+      register: tempdir
     - name: Download a dart-sdk zip file
       get_url:
         url: "{{ SDK['URL'] }}"
-        dest: "{{ TEMP_DIR }}/{{ SDK['ZIP'] }}"
-        checksum: "sha256:{{ SDK['URL'] }}.sha256sum"
+        dest: "{{ tempdir.path }}/{{ SDK['ZIP'] }}"
+        checksum: "sha256:{{ dart_sha256sum }}"
+      vars:
+        dart_sha256sum: "{{ lookup('url', SDK['URL'] + '.sha256sum').split()[0] }}"
       ignore_errors: "{{ ansible_check_mode }}"
+    - name: Install unzip package
+      package:
+        name: unzip
+        state: present
+    - name: Create directory for unpacking dart-sdk.zip
+      file:
+        path: "{{ SDK['ROOT_DIR'] }}"
+        owner: root
+        group: root
+        mode: 0755
+        state: directory
     - name: Unzip a dart-sdk zip file
       unarchive:
-        src: "{{ TEMP_DIR }}/{{ SDK['ZIP'] }}"
-        dest: "{{ SDK['PARENT_DIR'] }}"
-        creates: "{{ SDK['PARENT_DIR'] }}"
+        src: "{{ tempdir.path }}/{{ SDK['ZIP'] }}"
+        dest: "{{ SDK['ROOT_DIR'] }}"
+        creates: "{{ SDK['ROOT_DIR'] }}/dart-sdk"
         remote_src: yes
       ignore_errors: "{{ ansible_check_mode }}"
     - name: Change owner and group to root
       file:
-        path: "{{ SDK['PARENT_DIR'] }}/dart-sdk"
+        path: "{{ SDK['ROOT_DIR'] }}/dart-sdk"
         owner: root
         group: root
         state: directory
-        mode: "0755"
+        mode: 0755
         recurse: yes
     - name: Rename directory to sdk version
-      command:
-        cmd: "mv {{ SDK['PARENT_DIR'] }}/dart-sdk {{ SDK['PARENT_DIR'] }}/{{ DART_VERSION }}"
-    - name: Create/Change symbolic link to sdk current version
+      command: "mv dart-sdk {{ DART_VERSION }}"
+      args:
+        chdir: "{{ SDK['ROOT_DIR'] }}"
+  become: yes
+  when: not is_dart.stat.exists
+
+- name: "Change symbolic link to dart binary version {{ DART_VERSION }}"
+  block:
+    - name: "Create/Change symbolic link to sdk version {{ DART_VERSION }}"
       file:
-        src: "{{ SDK['PARENT_DIR'] }}/{{ DART_VERSION }}"
-        dest: "{{ SDK['PARENT_DIR'] }}/current"
+        src: "{{ SDK['ROOT_DIR'] }}/{{ DART_VERSION }}"
+        dest: "{{ SDK['ROOT_DIR'] }}/current"
         owner: root
         group: root
         state: link
     - name: Find files of dart binary
       find:
-        paths: "{{ SDK['PARENT_DIR'] }}/current/bin"
+        paths: "{{ SDK['ROOT_DIR'] }}/current/bin"
         file_type: file
         recurse: no
       register: dart_files
@@ -50,16 +74,33 @@
         state: link
       loop: "{{ dart_files.files }}"
   become: yes
-  when: is_dart.stat.exists == false
 
 - name: Setting pub
   block:
+    - name: Check installed pub packages
+      find:
+        paths: "{{ ansible_env.HOME }}/.pub-cache/bin"
+      register: activates
+    - name: Activate stagehand and webdev packages if need
+      command: "pub global activate {{ item }}"
+      loop:
+        - stagehand
+        - webdev
+      vars:
+        activated_list: >-
+          {%- for file in activates.files -%}
+            file.path
+          {%- endfor -%}
+      when: item not in activated_list
     - name: Export PATH of pub if need
       lineinfile:
-        path: "{{ ansible_env.HOME }}/.bash_profile"
+        path: >-
+          {%- if ansible_user_id == 'root' -%}
+            /etc/profile.d/dart.sh
+          {%- else -%}
+            ansible_env.HOME + '/.bash_profile'
+          {%- endif -%}
         state: present
+        create: yes
         line: "export PATH=$PATH:$HOME/.pub-cache/bin"
-      notify: Reload profile
-    - name: Activate webdev package
-      command:
-        cmd: "pub global activate webdev"
+  when: ansible_user_id != 'root'
