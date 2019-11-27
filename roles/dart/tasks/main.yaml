@@ -89,18 +89,15 @@
       vars:
         activated_list: >-
           {%- for file in activates.files -%}
-            file.path
+            {{ file.path }}
+            {%- if not loop.last -%}
+              ,
+            {%- endif -%}
           {%- endfor -%}
       when: item not in activated_list
     - name: Export PATH of pub if need
       lineinfile:
-        path: >-
-          {%- if ansible_user_id == 'root' -%}
-            /etc/profile.d/dart.sh
-          {%- else -%}
-            ansible_env.HOME + '/.bash_profile'
-          {%- endif -%}
+        path: "{{ ansible_env.HOME }}/.bash_profile"
         state: present
         create: yes
         line: "export PATH=$PATH:$HOME/.pub-cache/bin"
-  when: ansible_user_id != 'root'
